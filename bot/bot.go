@@ -6,9 +6,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// httpClient is a shared HTTP client with timeout configuration.
+var httpClient = &http.Client{
+	Timeout: 5 * time.Minute, // Allow up to 5 minutes for large file downloads
+}
 
 // Bot represents the Telegram bot instance.
 type Bot struct {
@@ -76,7 +82,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 
 // downloadFile downloads a file from a URL and saves it to the specified path.
 func downloadFile(url, filepath string) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}

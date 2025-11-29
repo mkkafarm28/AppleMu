@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,12 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// Maximum file size allowed (50MB - Telegram's limit for bots)
+const maxFileSize = 50 * 1024 * 1024
+
+// Regular expression for validating track IDs (alphanumeric only)
+var trackIDRegex = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 
 // Handler manages Telegram bot command handlers.
 type Handler struct {
@@ -142,11 +149,38 @@ func (h *Handler) HandleDecrypt(message *tgbotapi.Message) {
 	trackID := args[0]
 	key := args[1]
 
+	// Validate trackID to prevent path traversal and injection attacks
+	if !trackIDRegex.MatchString(trackID) {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Invalid track ID. Track ID must contain only alphanumeric characters.")
+		if _, err := h.bot.Send(msg); err != nil {
+			log.Printf("Error sending invalid trackID message: %v", err)
+		}
+		return
+	}
+
+	// Validate key format (should start with skd:// or similar scheme)
+	if !strings.Contains(key, "://") {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Invalid key format. Key should be a valid URI.")
+		if _, err := h.bot.Send(msg); err != nil {
+			log.Printf("Error sending invalid key message: %v", err)
+		}
+		return
+	}
+
 	// Check for attached document
 	if message.Document == nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Please attach the encrypted file as a document with the /decrypt command.")
 		if _, err := h.bot.Send(msg); err != nil {
 			log.Printf("Error sending no document message: %v", err)
+		}
+		return
+	}
+
+	// Check file size before processing
+	if message.Document.FileSize > maxFileSize {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ File too large. Maximum file size is 50MB.")
+		if _, err := h.bot.Send(msg); err != nil {
+			log.Printf("Error sending file size message: %v", err)
 		}
 		return
 	}
